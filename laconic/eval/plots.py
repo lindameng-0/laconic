@@ -15,6 +15,7 @@ from laconic.exceptions import MissingDependencyError
 
 _STRATEGY_STYLES = {
     "laconic-conservative": {"color": "#2a7de1", "marker": "s"},
+    "laconic-telegraphic": {"color": "#8e44ad", "marker": "D"},
     "laconic-budgeted": {"color": "#1a9e5c", "marker": "o"},
     "naive": {"color": "#c0392b", "marker": "x"},
 }

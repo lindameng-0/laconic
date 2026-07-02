@@ -52,8 +52,17 @@ def _small_matrix() -> tuple[list, list]:
 
 def test_matrix_shape() -> None:
     tasks, records = _small_matrix()
-    # cells: passthrough + conservative + (budgeted + naive) * 2 ratios = 6
-    assert len(records) == len(tasks) * 6
+    # cells: passthrough + conservative + telegraphic + (budgeted + naive) * 2 ratios = 7
+    assert len(records) == len(tasks) * 7
+
+
+def test_telegraphic_preserves_tool_plans_and_saves_tokens() -> None:
+    _, records = _small_matrix()
+    cells = [r for r in records if r.strategy == "laconic-telegraphic"]
+    tool_cells = [r for r in cells if r.family == "tool_plan_handoff"]
+    assert all(r.correct for r in tool_cells)  # structure untouched, always
+    mean_ratio = sum(r.tokens_after / r.tokens_before for r in cells) / len(cells)
+    assert mean_ratio < 0.95  # it must actually save something
 
 
 def test_passthrough_accuracy_is_high() -> None:

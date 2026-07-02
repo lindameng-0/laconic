@@ -90,6 +90,7 @@ seed-7 dataset (120 tasks, laconic v0.1.0). Reproducible in seconds:
 |---|---|---:|---:|---:|---:|
 | mock | passthrough | — | 120 | 1.000 | 1.000 |
 | mock | laconic-conservative | — | 120 | 1.000 | 0.936 |
+| mock | laconic-telegraphic | — | 120 | 1.000 | 0.886 |
 | mock | laconic-budgeted | 0.90 | 120 | 0.967 | 0.835 |
 | mock | laconic-budgeted | 0.75 | 120 | 0.850 | 0.729 |
 | mock | laconic-budgeted | 0.60 | 120 | 0.600 | 0.620 |

@@ -48,7 +48,7 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     spec = MatrixSpec(models=args.models, keep_ratios=args.ratios)
     print(
         f"running offline study: {len(tasks)} tasks x "
-        f"{2 + 2 * len(args.ratios)} strategy cells (mock client — measures "
+        f"{3 + 2 * len(args.ratios)} strategy cells (mock client - measures "
         f"information survival, not model comprehension)"
     )
     records = run_matrix(tasks, MockModelClient(), spec)

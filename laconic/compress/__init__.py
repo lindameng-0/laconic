@@ -5,6 +5,7 @@ from laconic.compress.extractive import ExtractiveCompressor
 from laconic.compress.naive import NaiveWholeMessageCompressor
 from laconic.compress.passthrough import PassthroughCompressor
 from laconic.compress.segments import Segment, join_segments, segment_payload
+from laconic.compress.telegraphic import TelegraphicCompressor
 
 __all__ = [
     "Compressor",
@@ -12,6 +13,7 @@ __all__ = [
     "NaiveWholeMessageCompressor",
     "PassthroughCompressor",
     "Segment",
+    "TelegraphicCompressor",
     "join_segments",
     "segment_payload",
 ]

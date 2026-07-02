@@ -93,3 +93,37 @@ def test_abbreviations_only_fire_when_cheaper(counter: HeuristicCounter) -> None
     text = "This works, for example, in most cases. " * 3
     out = ExtractiveCompressor().compress(text, counter=counter)
     assert counter.count(out) <= counter.count(text)
+
+
+def test_telegraphic_drops_function_words_keeps_content(counter: HeuristicCounter) -> None:
+    from laconic.compress.telegraphic import TelegraphicCompressor
+
+    text = (
+        "The revenue for Meridian Corp in Q1 2026 was 85.0 percent. "
+        "The team is very confident about the really strong outlook."
+    )
+    out = TelegraphicCompressor().compress(text, counter=counter)
+    assert counter.count(out) < counter.count(text)
+    for keeper in ("revenue", "Meridian Corp", "Q1 2026", "85.0 percent", "confident"):
+        assert keeper in out
+    assert " very " not in out and " really " not in out
+
+
+def test_telegraphic_never_drops_negations(counter: HeuristicCounter) -> None:
+    from laconic.compress.telegraphic import TelegraphicCompressor
+
+    text = (
+        "The deployment is not complete and the vendor must never be contacted. "
+        "The budget was not approved by the finance team this quarter."
+    )
+    out = TelegraphicCompressor().compress(text, counter=counter)
+    assert "not complete" in out
+    assert "never" in out
+    assert "not approved" in out
+
+
+def test_telegraphic_leaves_protected_segments_alone(counter: HeuristicCounter) -> None:
+    from laconic.compress.telegraphic import TelegraphicCompressor
+
+    out = TelegraphicCompressor().compress(CODE_FENCED, counter=counter)
+    assert "def handler(x):\n    return x * 2  # doubled" in out

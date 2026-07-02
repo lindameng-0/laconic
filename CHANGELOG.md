@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `telegraphic` strategy / `TelegraphicCompressor`: conservative cleanup plus
+  telegram-style function-word dropping (negation-protected, capitalization-
+  and structure-safe). Included in the eval matrix as `laconic-telegraphic`.
+  Offline (seed-7, mock client): information survival 1.000 at whole-message
+  token ratio 0.89 vs 0.94 for `conservative`.
+
 ## [0.1.0] — 2026-07-02
 
 Initial release.

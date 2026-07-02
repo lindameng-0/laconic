@@ -20,7 +20,7 @@ hints in source; this page is the map.
 ```python
 Session(
     target_model: str,               # whose tokenizer & budget to use
-    strategy: str = "conservative",  # off | conservative | balanced | aggressive
+    strategy: str = "conservative",  # off | conservative | telegraphic | balanced | aggressive
     framework: str = "openai-chat",  # or "langchain"
     compressor: Compressor | None = None,   # custom strategy (overrides `strategy`)
     dedup: bool | SessionDedup = True,
@@ -54,7 +54,9 @@ session.process(raw_message: dict, *, source_agent=None, target_agent=None)
 - `Compressor` — subclass to plug in a strategy; receives payload text only.
 - `PassthroughCompressor` — measurement baseline.
 - `ExtractiveCompressor(aggressive=False, default_budget=0.6)` — fillers,
-  token-checked abbreviations, novelty-guided sentence pruning under budget.
+  token-checked abbreviations, salience-aware sentence pruning under budget.
+- `TelegraphicCompressor()` — conservative cleanup plus telegram-style
+  function-word dropping (negations and their successors always protected).
 - `laconic.compress.llmlingua.LLMLinguaCompressor` — optional adapter
   (`pip install "laconic[llmlingua]"`).
 - `NaiveWholeMessageCompressor` — **eval baseline only**; deliberately unsafe.

@@ -75,7 +75,7 @@ def main() -> int:
     parser.add_argument(
         "--strategy",
         default="conservative",
-        choices=["off", "conservative", "balanced", "aggressive"],
+        choices=["off", "conservative", "telegraphic", "balanced", "aggressive"],
     )
     parser.add_argument(
         "--model",

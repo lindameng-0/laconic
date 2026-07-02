@@ -71,6 +71,7 @@ class MatrixSpec:
     keep_ratios: list[float] = field(default_factory=lambda: [0.9, 0.75, 0.6, 0.45, 0.3])
     include_naive: bool = True
     include_conservative: bool = True
+    include_telegraphic: bool = True
 
 
 def _render_receiver_messages(handoff_text: str, question: str) -> list[dict[str, Any]]:
@@ -84,10 +85,17 @@ def _render_receiver_messages(handoff_text: str, question: str) -> list[dict[str
 
 
 def _laconic_handoff(
-    task: BenchmarkTask, model: str, budget: float | None, counter: TokenCounter
+    task: BenchmarkTask,
+    model: str,
+    budget: float | None,
+    counter: TokenCounter,
+    *,
+    telegraphic: bool = False,
 ) -> tuple[str, int, int, bool]:
     """Process a handoff through the Laconic pipeline; return rendering + stats."""
-    if budget is None:
+    if telegraphic:
+        session = Session(target_model=model, strategy="telegraphic", counter=counter)
+    elif budget is None:
         session = Session(target_model=model, strategy="conservative", counter=counter)
     else:
         session = Session(
@@ -141,6 +149,8 @@ def run_matrix(
         cells: list[tuple[str, float | None]] = [("passthrough", None)]
         if spec.include_conservative:
             cells.append(("laconic-conservative", None))
+        if spec.include_telegraphic:
+            cells.append(("laconic-telegraphic", None))
         for ratio in spec.keep_ratios:
             cells.append(("laconic-budgeted", ratio))
             if spec.include_naive:
@@ -152,6 +162,10 @@ def run_matrix(
                     text, before, after, fell_back = _passthrough_handoff(task, counter)
                 elif strategy == "laconic-conservative":
                     text, before, after, fell_back = _laconic_handoff(task, model, None, counter)
+                elif strategy == "laconic-telegraphic":
+                    text, before, after, fell_back = _laconic_handoff(
+                        task, model, None, counter, telegraphic=True
+                    )
                 elif strategy == "laconic-budgeted":
                     text, before, after, fell_back = _laconic_handoff(task, model, ratio, counter)
                 else:  # naive

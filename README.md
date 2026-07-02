@@ -111,8 +111,11 @@ raw message ──parse──▶  structural (tool calls, args, IDs)  ── unt
   byte-identical after rebuild. Payloads embedding structure (code fences,
   JSON paragraphs, tables) are segmented and those segments protected too.
 - **Strategies**: `off` (measure only) · `conservative` (filler pruning +
-  token-checked abbreviations; default) · `balanced` (sentence pruning at the
-  model's safe keep-ratio) · `aggressive` (opt-in, clearly labeled).
+  token-checked abbreviations; default) · `telegraphic` (conservative plus
+  telegram-style function-word dropping — the closest thing to "AI shorthand"
+  that stays inside models' training distribution; validate per model with
+  the eval harness) · `balanced` (sentence pruning at the model's safe
+  keep-ratio) · `aggressive` (opt-in, clearly labeled).
 - **Dedup**: repeated blocks are replaced with a short reference — only when
   the recipient already has the content earlier in its own context (safe
   default), or via an explicit rehydration tool (opt-in). Never rewrites

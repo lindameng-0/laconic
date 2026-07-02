@@ -16,6 +16,7 @@ from laconic.adapters.profiles import keep_ratio_for
 from laconic.compress.base import Compressor
 from laconic.compress.extractive import ExtractiveCompressor
 from laconic.compress.passthrough import PassthroughCompressor
+from laconic.compress.telegraphic import TelegraphicCompressor
 from laconic.dedup.session import SessionDedup
 from laconic.exceptions import LaconicError
 from laconic.message.model import CompressionStats
@@ -25,7 +26,7 @@ from laconic.tokenizers.base import TokenCounter
 from laconic.tokenizers.registry import get_counter
 
 #: Built-in strategy names accepted by :class:`Session`.
-STRATEGIES = ("off", "conservative", "balanced", "aggressive")
+STRATEGIES = ("off", "conservative", "telegraphic", "balanced", "aggressive")
 
 
 @dataclass(frozen=True)
@@ -54,8 +55,10 @@ class Session:
             savings are measured with its tokenizer and the budget comes from
             its profile.
         strategy: ``"off"`` (measure only), ``"conservative"`` (lossless-in-
-            meaning cleanup, the default), ``"balanced"`` (budgeted pruning at
-            the model's safe keep-ratio), ``"aggressive"`` (budgeted at
+            meaning cleanup, the default), ``"telegraphic"`` (conservative plus
+            telegram-style function-word dropping — verify model tolerance with
+            the eval harness first), ``"balanced"`` (budgeted pruning at the
+            model's safe keep-ratio), ``"aggressive"`` (budgeted at
             ``aggressive_keep_ratio``) — or pass a custom ``compressor``.
         framework: Message format tag (``"openai-chat"`` or ``"langchain"``).
         compressor: Custom :class:`~laconic.compress.Compressor`; overrides
@@ -97,6 +100,9 @@ class Session:
             self._budget = None
         elif strategy == "conservative":
             self.compressor = ExtractiveCompressor(aggressive=False)
+            self._budget = None
+        elif strategy == "telegraphic":
+            self.compressor = TelegraphicCompressor()
             self._budget = None
         elif strategy == "balanced":
             self.compressor = ExtractiveCompressor(aggressive=True)
