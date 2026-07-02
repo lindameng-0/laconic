@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use Laconic in academic work, please cite it as below."
+title: "Laconic: token-efficient middleware for multi-agent LLM workflows"
+type: software
+authors:
+  - name: "Laconic contributors"
+version: 0.1.0
+date-released: 2026-07-02
+license: MIT
+repository-code: "https://github.com/USER/laconic"
+abstract: >-
+  Laconic compresses the natural-language payload of inter-agent messages in
+  multi-agent LLM workflows while preserving structural scaffolding (tool
+  calls, arguments, identifiers, schemas) losslessly. It operates entirely in
+  the text channel, targets closed models accessed via API, measures all
+  savings with the target model's tokenizer, and includes a reproducible
+  benchmark harness characterizing cross-model compression tolerance of agent
+  traffic.
+keywords:
+  - large language models
+  - multi-agent systems
+  - prompt compression
+  - token efficiency

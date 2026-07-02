@@ -1,0 +1,34 @@
+site_name: Laconic
+site_description: Token-efficient middleware for multi-agent LLM workflows
+repo_url: https://github.com/USER/laconic
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  features:
+    - navigation.sections
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Design decisions (ADRs): design-decisions.md
+  - Limitations: limitations.md
+  - Related work: related-work.md
+  - Benchmark: benchmark.md
+  - API reference: api-reference.md
+  - Contributing: contributing.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - tables

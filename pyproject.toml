@@ -1,0 +1,88 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "laconic"
+version = "0.1.0"
+description = "Token-efficient middleware for multi-agent LLM workflows: structure-preserving compression, dedup, and profiling for inter-agent messages."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Laconic contributors" }]
+keywords = [
+    "llm",
+    "agents",
+    "multi-agent",
+    "prompt-compression",
+    "token-efficiency",
+    "middleware",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = ["pydantic>=2.5"]
+
+[project.optional-dependencies]
+openai = ["tiktoken>=0.5"]
+anthropic = ["anthropic>=0.40"]
+llmlingua = ["llmlingua>=0.2"]
+langgraph = ["langgraph>=0.2", "langchain-core>=0.3"]
+plots = ["matplotlib>=3.8"]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "tiktoken>=0.5",
+    "hypothesis>=6.100",
+]
+all = ["laconic[openai,anthropic,langgraph,plots]"]
+
+[project.scripts]
+laconic = "laconic.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/USER/laconic"
+Documentation = "https://github.com/USER/laconic/tree/main/docs"
+Issues = "https://github.com/USER/laconic/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["laconic"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF"]
+ignore = [
+    "SIM108", # ternary is not always clearer
+    "RUF001", # intentional unicode (arrows, ±, dashes) in strings
+    "RUF002", # intentional unicode in docstrings
+    "RUF003", # intentional unicode in comments
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["laconic"]
