@@ -64,7 +64,7 @@ In code — one hook on the seam where messages cross between agents:
 from laconic import Session, summary_table
 from laconic.integrations import CompressingHook
 
-hook = CompressingHook(Session(target_model="gpt-4.1", strategy="conservative"))
+hook = CompressingHook(Session(target_model="gpt-4.1"))  # default: telegraphic
 
 # wherever agent A's output becomes agent B's input:
 cheap_handoff = hook.process_message(
@@ -88,7 +88,7 @@ LangGraph users: insert a compression node between two agents —
 ```python
 from laconic.integrations import make_compression_node
 
-graph.add_node("laconic", make_compression_node("gpt-4.1", "conservative",
+graph.add_node("laconic", make_compression_node("gpt-4.1", "telegraphic",
                                                 source_agent="planner",
                                                 target_agent="executor"))
 graph.add_edge("planner", "laconic")
@@ -111,11 +111,11 @@ raw message ──parse──▶  structural (tool calls, args, IDs)  ── unt
   byte-identical after rebuild. Payloads embedding structure (code fences,
   JSON paragraphs, tables) are segmented and those segments protected too.
 - **Strategies**: `off` (measure only) · `conservative` (filler pruning +
-  token-checked abbreviations; default) · `telegraphic` (conservative plus
-  telegram-style function-word dropping — the closest thing to "AI shorthand"
-  that stays inside models' training distribution; validate per model with
-  the eval harness) · `balanced` (sentence pruning at the model's safe
-  keep-ratio) · `aggressive` (opt-in, clearly labeled).
+  token-checked abbreviations only) · `telegraphic` (**default**: conservative
+  plus telegram-style function-word dropping — the closest thing to "AI
+  shorthand" that stays inside models' training distribution; every content
+  word, number, name, and negation survives) · `balanced` (sentence pruning
+  at the model's safe keep-ratio) · `aggressive` (opt-in, clearly labeled).
 - **Dedup**: repeated blocks are replaced with a short reference — only when
   the recipient already has the content earlier in its own context (safe
   default), or via an explicit rehydration tool (opt-in). Never rewrites

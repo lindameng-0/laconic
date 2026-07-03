@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- `telegraphic` is now the **default strategy** for `Session`, the LangGraph
+  integration, and the toy example (ADR-8). `conservative` remains available
+  for zero grammatical alteration.
+
 ### Added
 - `telegraphic` strategy / `TelegraphicCompressor`: conservative cleanup plus
   telegram-style function-word dropping (negation-protected, capitalization-

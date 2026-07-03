@@ -139,15 +139,44 @@ of one silent corruption in production dwarfs the token savings. Meanwhile,
 the compression literature is full of order-of-magnitude claims that don't
 survive contact with structured traffic.
 
-**Decision.** The default strategy is conservative (filler pruning +
-token-checked abbreviations, no sentence dropping). Budgeted pruning is
-opt-in, bounded by per-model safe operating points that ship *unmeasured*
-(`None`) until the eval harness actually measures them — the default budget
-in the absence of measurement is a gentle 0.75. The docs state the realistic
-ceiling (1.3–3× on chatty payloads) up front. No benchmark number in this
-repository is invented; the README results table stays a template until a
-real run fills it.
+**Decision.** The default strategy never drops content: sentence-level
+pruning is opt-in, bounded by per-model safe operating points that ship
+*unmeasured* (`None`) until the eval harness actually measures them — the
+default budget in the absence of measurement is a gentle 0.75. The docs state
+the realistic ceiling (1.3–3× on chatty payloads) up front. No benchmark
+number in this repository is invented; the README results table stays a
+template until a real run fills it. (The default was originally
+`conservative`; ADR-8 records the move to `telegraphic`, which preserves the
+never-drop-content property.)
 
 **Consequences.** First-run savings look modest compared to marketing-driven
 tools. Every number a user sees is one they can reproduce. The eval exists to
 *extend* the safe frontier with evidence, not vibes.
+
+---
+
+## ADR-8 — Telegraphic is the default strategy
+
+**Context.** Users consistently ask for "a more efficient language for the
+AIs to talk in." Genuinely new codes are unavailable (ADR-1) and usually
+tokenize worse (ADR-3); the practical headroom inside the training
+distribution is telegram-style English — dropping articles, intensifiers,
+politeness, and meaning-safe copulas while keeping every content word,
+number, name, and negation. On the seed-7 offline benchmark this scores
+information survival 1.000 at whole-message token ratio 0.886, versus 0.936
+for `conservative`, and it composes with (rather than replaces) the
+conservative cleanup.
+
+**Decision.** `telegraphic` is the default `Session` strategy. Its guards are
+part of the contract: negations and their following word are never dropped,
+capitalized words and numbers survive, protected segments are untouched, and
+the pipeline's verify-and-fallback still applies. `conservative` remains
+available for users who want zero grammatical alteration.
+
+**Consequences.** Default handoffs read like terse notes rather than full
+prose. Information survival is measured at 1.000 offline, but *model
+comprehension* of telegraphic prose is per-model and unverified until a real
+eval run — the harness includes `laconic-telegraphic` as a matrix cell
+precisely so that number can be produced. Users whose downstream agents do
+grammatical inference on handoffs (rare, but possible) should switch back to
+`conservative`.

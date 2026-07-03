@@ -53,7 +53,7 @@ class LangGraphCompressor:
     def __init__(
         self,
         target_model: str,
-        strategy: str = "conservative",
+        strategy: str = "telegraphic",
         only_new: int = 1,
         **session_kwargs: Any,
     ) -> None:
@@ -119,7 +119,7 @@ class LangGraphCompressor:
 
 def make_compression_node(
     target_model: str,
-    strategy: str = "conservative",
+    strategy: str = "telegraphic",
     source_agent: str | None = None,
     target_agent: str | None = None,
     **session_kwargs: Any,

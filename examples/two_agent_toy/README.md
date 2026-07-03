@@ -5,8 +5,9 @@ offline (the "agents" are scripted), so the token report you see is real but
 free.
 
 ```bash
-python run.py                          # conservative strategy, gpt-4.1 tokenizer
+python run.py                          # telegraphic strategy (default), gpt-4.1 tokenizer
 python run.py --strategy off           # measurement only — profile before compressing
+python run.py --strategy conservative  # lossless-in-meaning cleanup only
 python run.py --strategy aggressive    # budgeted pruning
 python run.py --html report.html       # also write the HTML report
 ```

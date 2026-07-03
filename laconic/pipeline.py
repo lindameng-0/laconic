@@ -55,10 +55,11 @@ class Session:
             savings are measured with its tokenizer and the budget comes from
             its profile.
         strategy: ``"off"`` (measure only), ``"conservative"`` (lossless-in-
-            meaning cleanup, the default), ``"telegraphic"`` (conservative plus
-            telegram-style function-word dropping — verify model tolerance with
-            the eval harness first), ``"balanced"`` (budgeted pruning at the
-            model's safe keep-ratio), ``"aggressive"`` (budgeted at
+            meaning cleanup only), ``"telegraphic"`` (the default: conservative
+            plus telegram-style function-word dropping — content words,
+            numbers, names, negations, and structure always survive; see
+            ADR-8), ``"balanced"`` (budgeted pruning at the model's safe
+            keep-ratio), ``"aggressive"`` (budgeted at
             ``aggressive_keep_ratio``) — or pass a custom ``compressor``.
         framework: Message format tag (``"openai-chat"`` or ``"langchain"``).
         compressor: Custom :class:`~laconic.compress.Compressor`; overrides
@@ -75,7 +76,7 @@ class Session:
     def __init__(
         self,
         target_model: str,
-        strategy: str = "conservative",
+        strategy: str = "telegraphic",
         framework: str = "openai-chat",
         compressor: Compressor | None = None,
         dedup: bool | SessionDedup = True,

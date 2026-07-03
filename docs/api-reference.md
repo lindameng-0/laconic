@@ -20,7 +20,7 @@ hints in source; this page is the map.
 ```python
 Session(
     target_model: str,               # whose tokenizer & budget to use
-    strategy: str = "conservative",  # off | conservative | telegraphic | balanced | aggressive
+    strategy: str = "telegraphic",   # off | conservative | telegraphic | balanced | aggressive
     framework: str = "openai-chat",  # or "langchain"
     compressor: Compressor | None = None,   # custom strategy (overrides `strategy`)
     dedup: bool | SessionDedup = True,

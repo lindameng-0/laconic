@@ -8,8 +8,9 @@ production, the docs have failed.
 Laconic is a text-channel tool (ADR-1). On the traffic it targets:
 
 - **Chatty natural-language payloads**: typically a 1.3–3× token reduction
-  depending on strategy and how verbose the source agent is. The conservative
-  default sits at the low end of that range.
+  depending on strategy and how verbose the source agent is. The content-
+  preserving strategies (`conservative`, the default `telegraphic`) sit at
+  the low end of that range; budgeted pruning reaches the high end.
 - **Structure-heavy traffic** (tool calls, tool results, JSON payloads):
   little to nothing — by design. The structural part is never compressed, and
   payloads that *are* structured data pass through whole. If your workflow is
@@ -29,8 +30,16 @@ redundancy-guided and never drops paragraph leads or protected segments, but
 "low lexical novelty" is not "unimportant": a constraint buried in filler can
 be pruned at aggressive budgets. That is exactly the failure mode the
 benchmark's `constraint_tracking` family measures. If your handoffs carry
-hard requirements, either keep the conservative default or run the eval
-against your own traffic before turning budgets down.
+hard requirements, stay with the default `telegraphic` (which never drops
+content words) or `conservative`, or run the eval against your own traffic
+before turning budgets down.
+
+The default `telegraphic` strategy alters *grammar*, not content: it drops
+articles, intensifiers, and meaning-safe copulas (never negations or the word
+after them). Offline information survival is 1.000, but whether every model
+comprehends telegraphic prose exactly as well as full prose is per-model and
+unmeasured until a real eval run (ADR-8). If a downstream agent depends on
+grammatical nuance in handoffs, use `conservative`.
 
 ## Token-count tiers
 

@@ -74,7 +74,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--strategy",
-        default="conservative",
+        default="telegraphic",
         choices=["off", "conservative", "telegraphic", "balanced", "aggressive"],
     )
     parser.add_argument(
