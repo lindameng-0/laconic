@@ -57,9 +57,9 @@ all = ["laconic[openai,anthropic,langgraph,plots]"]
 laconic = "laconic.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/USER/laconic"
-Documentation = "https://github.com/USER/laconic/tree/main/docs"
-Issues = "https://github.com/USER/laconic/issues"
+Homepage = "https://github.com/lindameng-0/laconic"
+Documentation = "https://github.com/lindameng-0/laconic/tree/main/docs"
+Issues = "https://github.com/lindameng-0/laconic/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["laconic"]

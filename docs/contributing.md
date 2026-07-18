@@ -6,7 +6,7 @@ backends, and real-model eval results.
 ## Setup
 
 ```bash
-git clone https://github.com/USER/laconic
+git clone https://github.com/lindameng-0/laconic
 cd laconic
 python -m venv .venv && . .venv/bin/activate   # or .venv\Scripts\activate on Windows
 pip install -e ".[dev]"

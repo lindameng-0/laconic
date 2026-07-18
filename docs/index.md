@@ -4,7 +4,7 @@ Token-efficient middleware for multi-agent LLM workflows: structure-preserving
 compression, session dedup, and profiling for inter-agent messages — for users
 of closed models, entirely in the text channel.
 
-Start with the [README](https://github.com/USER/laconic#readme) for the
+Start with the [README](https://github.com/lindameng-0/laconic#readme) for the
 quickstart, then:
 
 - [Architecture](architecture.md) — the `Message` abstraction, modules, and

@@ -1,6 +1,6 @@
 site_name: Laconic
 site_description: Token-efficient middleware for multi-agent LLM workflows
-repo_url: https://github.com/USER/laconic
+repo_url: https://github.com/lindameng-0/laconic
 theme:
   name: material
   palette:

@@ -5,7 +5,7 @@ the tokens spent when agents pass messages to each other, by compressing the
 natural-language payload of each handoff while preserving the structural
 scaffolding — tool calls, function arguments, IDs, schema fields — **losslessly**.
 
-[![CI](https://github.com/USER/laconic/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/laconic/actions/workflows/ci.yml)
+[![CI](https://github.com/lindameng-0/laconic/actions/workflows/ci.yml/badge.svg)](https://github.com/lindameng-0/laconic/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 
