@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import re
 
-from laconic.compress.abbreviations import strip_fillers
 from laconic.compress.base import Compressor
 from laconic.compress.segments import Segment, join_segments, segment_payload
 from laconic.tokenizers.base import TokenCounter
@@ -40,24 +39,18 @@ _DROPPABLE = frozenset(
         "a",
         "an",
         "the",
-        "very",
-        "really",
-        "quite",
-        "rather",
-        "fairly",
-        "somewhat",
-        "broadly",
-        "generally",
-        "basically",
-        "essentially",
-        "actually",
-        "certainly",
-        "definitely",
-        "simply",
-        "just",
         "please",
         "kindly",
     ]
+)
+
+# Degree, frequency, certainty, and scope modifiers are content. Conservative
+# filler cleanup can also remove some of them, so reject that cleanup when
+# its qualifier sequence changes before applying the telegraphic pass.
+_QUALIFIERS = re.compile(
+    r"\b(?:very|really|quite|rather|fairly|somewhat|broadly|generally|basically|"
+    r"essentially|actually|certainly|definitely|simply|just)\b",
+    re.IGNORECASE,
 )
 
 #: Copulas droppable only when meaning-safe (no adjacent negation).
@@ -125,9 +118,9 @@ def _telegraph_sentenceward(text: str) -> str:
 class TelegraphicCompressor(Compressor):
     """Function-word dropping over free-text payload segments.
 
-    Runs the conservative extractive cleanup first (whitespace, fillers,
-    token-checked abbreviations) and telegraphs on top of it — telegraphic is
-    a strict superset of ``conservative``. No budget parameter: the
+    Attempts conservative cleanup first, retaining it only when the sequence
+    of degree, frequency, certainty, and scope modifiers survives. Then drops
+    articles, courtesy words, and eligible copulas. No budget parameter: the
     transformation is all-or-nothing per word class, so its achieved ratio is
     a property of the traffic (roughly 0.8–0.9 of payload tokens on verbose
     prose, more when the prose is chattier). Use the eval harness to learn
@@ -153,12 +146,13 @@ class TelegraphicCompressor(Compressor):
         if not text.strip():
             return text
         cleaned = self._cleanup.compress(text, counter=counter)
+        if _QUALIFIERS.findall(cleaned.lower()) != _QUALIFIERS.findall(text.lower()):
+            cleaned = text
         segments = segment_payload(cleaned)
         out: list[Segment] = []
         for segment in segments:
             if segment.kind == "protected":
                 out.append(segment)
                 continue
-            stripped = strip_fillers(segment.text)
-            out.append(Segment(kind="text", text=_telegraph_sentenceward(stripped)))
+            out.append(Segment(kind="text", text=_telegraph_sentenceward(segment.text)))
         return self._no_worse(text, join_segments(out), counter)

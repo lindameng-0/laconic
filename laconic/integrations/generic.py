@@ -7,6 +7,7 @@ framework integrations stay thin by delegating here.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from laconic.pipeline import Session
@@ -41,9 +42,15 @@ class CompressingHook:
         *,
         source_agent: str | None = None,
         target_agent: str | None = None,
+        context_payloads: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Process one outgoing message; record stats; return what to send."""
-        processed = self.session.process(raw, source_agent=source_agent, target_agent=target_agent)
+        processed = self.session.process(
+            raw,
+            source_agent=source_agent,
+            target_agent=target_agent,
+            context_payloads=context_payloads,
+        )
         self.profile.add(processed.stats, source_agent=source_agent, target_agent=target_agent)
         return processed.raw
 
@@ -53,17 +60,19 @@ class CompressingHook:
         *,
         source_agent: str | None = None,
         target_agent: str | None = None,
-        only_new: int | None = None,
+        only_new: int | None = 1,
     ) -> list[dict[str, Any]]:
         """Process a message list before a model call.
 
         Args:
             messages: The full message list about to be sent.
-            only_new: When set, only the last ``only_new`` messages are
-                processed and the rest pass through untouched. Use this to
-                stay **prefix-stable** for provider prompt caching — never
-                rewrite history that a provider may have cached.
+            only_new: Only the last ``only_new`` messages are processed
+                (default 1); the actual untouched history provides context
+                evidence. Explicit ``None`` processes the full list, using
+                only already-emitted output as evidence for each message.
         """
+        if only_new is not None and only_new < 0:
+            raise ValueError("only_new must be non-negative or None")
         if only_new is None:
             head: list[dict[str, Any]] = []
             tail = list(messages)
@@ -71,8 +80,19 @@ class CompressingHook:
             split = max(0, len(messages) - only_new)
             head = list(messages[:split])
             tail = list(messages[split:])
-        processed_tail = [
-            self.process_message(message, source_agent=source_agent, target_agent=target_agent)
-            for message in tail
+        output = head
+        context = [
+            message.get("content") if isinstance(message.get("content"), str) else ""
+            for message in head
         ]
-        return head + processed_tail
+        for message in tail:
+            processed = self.process_message(
+                message,
+                source_agent=source_agent,
+                target_agent=target_agent,
+                context_payloads=context,
+            )
+            output.append(processed)
+            content = processed.get("content")
+            context.append(content if isinstance(content, str) else "")
+        return output

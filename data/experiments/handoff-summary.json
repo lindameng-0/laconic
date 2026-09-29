@@ -1,0 +1,83 @@
+{
+  "experiment": "retry-handoff-fault-injection-v1",
+  "receiver": "Scripted retry-policy interpreter; no language model or paid calls.",
+  "interpretation": "Synthetic faults share generated specifications and latest-clause-wins semantics. These are protocol checks, not independent production tasks or model success rates. Text token totals are not bills. Diagnostic overhead includes all validator calls.",
+  "runs": [
+    {
+      "seed": 7,
+      "variants": 3,
+      "cases": 24,
+      "tokenizer": "gpt-4.1",
+      "count_tier": "exact",
+      "report_sha256": "2a0dfb973541087c261f0df2488d90d8407e4a93a51921147bb1cdf345e5ab63",
+      "policy_results": {
+        "full_context": {
+          "passed": 24,
+          "total_text_tokens": 13296
+        },
+        "concise_contract": {
+          "passed": 24,
+          "total_text_tokens": 1296
+        },
+        "telegraphic": {
+          "passed": 24,
+          "total_text_tokens": 10920
+        },
+        "balanced": {
+          "passed": 24,
+          "total_text_tokens": 5592
+        },
+        "observed_handoff": {
+          "passed": 6,
+          "total_text_tokens": 1164
+        }
+      },
+      "replay_statuses": {
+        "repaired": 15,
+        "candidate_passed": 6,
+        "unresolved": 3
+      },
+      "validator_calls": 69,
+      "diagnostic_input_tokens": 16350,
+      "result_text_tokens": 1941
+    },
+    {
+      "seed": 19,
+      "variants": 3,
+      "cases": 24,
+      "tokenizer": "gpt-4.1",
+      "count_tier": "exact",
+      "report_sha256": "39f94d2dd29cd91ad32cfe7b13370968d63495ee5e69e5940ef66c6dd79d5508",
+      "policy_results": {
+        "full_context": {
+          "passed": 24,
+          "total_text_tokens": 13296
+        },
+        "concise_contract": {
+          "passed": 24,
+          "total_text_tokens": 1296
+        },
+        "telegraphic": {
+          "passed": 24,
+          "total_text_tokens": 10920
+        },
+        "balanced": {
+          "passed": 24,
+          "total_text_tokens": 5592
+        },
+        "observed_handoff": {
+          "passed": 6,
+          "total_text_tokens": 1164
+        }
+      },
+      "replay_statuses": {
+        "repaired": 15,
+        "candidate_passed": 6,
+        "unresolved": 3
+      },
+      "validator_calls": 69,
+      "diagnostic_input_tokens": 16350,
+      "result_text_tokens": 1941
+    }
+  ]
+}

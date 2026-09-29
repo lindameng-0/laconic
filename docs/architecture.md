@@ -1,97 +1,94 @@
-# Architecture
+﻿# Architecture
 
-## The `Message` abstraction
+Laconic has two related paths: a message transformation pipeline and a
+source-backed handoff audit/replay library. Structural checks, exact-text
+checks, and downstream task checks report different kinds of evidence.
 
-Every inter-agent message is decomposed at parse time:
+## Message transformation
 
-| part | contents | who may touch it |
-|---|---|---|
-| `structural` | tool calls, function arguments, IDs, schema keys, control fields, unknown keys — deep-copied | nobody |
-| `payload` | the natural-language content of the payload field | compressors, dedup |
-| `metadata` | source/target agent, target model, framework tag | routing only, never sent to a model |
+The parser decomposes a message into deep-copied `structural` fields, a
+compressible text `payload`, and routing `metadata`. Tool calls, function
+arguments, IDs, unknown fields, and other protected fields stay outside the
+compressor API. Key order is retained for rebuilding the message.
 
-The parser also records the original key order, so a rebuild with an unchanged
-payload reproduces the raw message **exactly** (`tests/test_roundtrip.py`
-enforces this over a synthetic corpus of tool calls, tool results, unicode,
-code fences, multimodal parts, and unknown keys).
-
-## Data contracts
-
-1. **A compressor only ever sees `payload`.** It is structurally impossible
-   for a compressor to corrupt `structural` — the compressor API receives a
-   string and returns a string; the structural dict never passes through it.
-2. **Payload-embedded structure is protected too.** Before compression the
-   payload is segmented (`laconic/compress/segments.py`); code fences, JSON
-   paragraphs, and markdown tables are never transformed.
-3. **Every `CompressionStats` carries provenance**: original tokens,
-   compressed tokens, ratio, model, strategy, the token-count tier
-   (`exact`/`api`/`estimate`), a safety flag, and whether fallback occurred.
-4. **Verification before delivery.** After rebuild, the pipeline compares a
-   canonical serialization of everything except the payload field, checks key
-   order, re-parses the rebuilt message, and confirms the token count did not
-   grow. Any mismatch → the original message is delivered and the fallback is
-   recorded.
-5. **Failure mode is "no savings", never "broken workflow".** All exceptions
-   inside `Session.process` are contained.
-
-## Module map
-
-```
-laconic/
-  tokenizers/    tiered token counting: exact (tiktoken) / api (Anthropic) / estimate
-  message/       Message model, protected-fields registry, framework parsers
-  compress/      Compressor interface: passthrough, extractive, llmlingua (opt),
-                 segments (payload protection), naive (eval-only baseline)
-  dedup/         content store + session dedup (context mode / store mode)
-  adapters/      per-model profiles: pricing (dated), measured safe keep-ratios
-  integrations/  generic hook + thin LangGraph shim
-  profiler/      handoff records, text/HTML reports, standalone trace analysis
-  eval/          benchmark tasks + seeded generator, model clients (mock/real),
-                 matrix runner, metrics (safe operating point), plots
-  pipeline.py    Session: parse → dedup → compress → verify → rebuild
-  cli.py         `laconic profile`, `laconic eval`, `laconic version`
+```text
+count original -> parse -> segment payload
+                            |
+           protected spans stay unchanged
+           free text -> dedup -> compressor
+                            |
+              rebuild -> verify -> count result
+                            |
+              return result or original + fallback reason
 ```
 
-## The pipeline
+The pipeline applies segmentation around all transformations, including custom
+compressors and dedup. Recognized code fences, JSON paragraphs, and Markdown
+tables are protected. It verifies their ordered contents again after rebuilding,
+along with the structural fingerprint, key order, reparsing, and nonincreasing
+token count. Generated dedup references are kept out of prose compression.
 
-```
-raw dict ──parse──▶ Message{structural, payload, metadata}
-                       │
-      no payload? ─────┤ (tool result, structured content, tiny text)
-        └─▶ pass through, stats recorded
-                       │
-                payload ─▶ SessionDedup (per-recipient, prefix-stable)
-                       │
-                       ─▶ Compressor (only free-text segments)
-                       │
-                rebuild ─▶ verify: structural fingerprint byte-identical,
-                       │           key order preserved, re-parses cleanly,
-                       │           token count did not grow
-                       │
-              ok ─▶ deliver rebuilt message      fail ─▶ deliver original,
-                                                          record fallback
-```
+`strategy="off"` measures and returns the original message without parsing,
+compression, or dedup side effects. Once the initial token count succeeds,
+parse, transformation, and verification failures produce passthrough with a
+recorded reason. Initial counting failures propagate because no valid baseline
+measurement exists.
 
-## Where the savings land (and don't)
+`CompressionStats.structure_preserved` and `protected_spans_preserved` describe
+the returned message. The compatibility field `safe` is a structural status;
+none of these flags establishes semantic equivalence or task success.
 
-Tokens are spent when text enters a model's context — nowhere else. This has
-two consequences the design takes seriously:
+## Context and token accounting
 
-- **No rehydrate-before-read.** If a dedup handle were expanded before the
-  receiving model reads the message, nothing would be saved. Context-mode
-  dedup therefore only references content the *same recipient* already has in
-  its context; store-mode dedup gives the receiving agent a rehydration tool
-  and lets it decide.
-- **Prefix stability.** Provider prompt caches bill cached input tokens at a
-  fraction of the normal price. Laconic never rewrites already-sent history —
-  only the newly produced handoff is processed — so cache hits on the shared
-  prefix are preserved.
+Context dedup uses the supplied `context_payloads`: the ordered text of messages
+actually present in the recipient's current context, excluding the outgoing
+message. Use empty strings for non-text messages to retain indices. Recipient
+names and previous calls do not establish that content survived truncation,
+compaction, or a branch. Without current-context evidence, no context reference
+is emitted.
 
-## Extension points
+`CompressingHook.process_messages` defaults to `only_new=1`. It preserves the
+earlier messages and derives context evidence from the actual output list.
+Explicit `only_new=None` transforms the entire list and can change an existing
+cache prefix. Store dedup instead requires the caller to expose the rehydration
+tool; fetches and their costs are outside the compression measurement.
 
-- `register_parser()` — add a message format.
-- `ProtectedFieldsRegistry` — change what counts as protected per framework.
-- Subclass `Compressor` — any string-to-string strategy plugs into the same
-  safety pipeline; it can only ever see payload text.
-- `register_profile()` — add pricing/tolerance for new models.
-- Subclass `ContentStore` — back dedup with external storage.
+Counts carry `exact`, `api`, or `estimate` provenance. For an API counter, a
+local heuristic searches transformation candidates; provider counting is used
+for the original and final message. Serialized-message token differences are
+not complete request billing or whole-workflow savings.
+
+## Handoff contracts and bounded replay
+
+`handoff/contracts.py` validates immutable evidence snapshots and explicitly
+selected requirement quotes. Quotes must occur verbatim in their cited source.
+Audits locate each quote's first observed absence. Repair appends selected
+source clauses and citations within an optional token-growth cap. Neither step
+infers missing requirements, resolves contradictions, or proves comprehension.
+
+`handoff/replay.py` takes a caller-owned validator that runs a downstream task.
+It requires a source-complete original baseline to pass before comparing the
+candidate. If the candidate fails, it tries source-backed additions and one
+bounded greedy deletion pass. Every validator call, outcome, exception, and
+text fingerprint is recorded. The call budget includes baseline and candidate;
+the library does not execute generated code or shell commands itself.
+
+A replay success applies to that validator and recorded run. The caller owns
+task isolation, reproducibility, and the cost of callback execution. See
+[handoff usage](handoffs.md) and [limitations](limitations.md).
+
+## Modules and extension points
+
+- `message/`, `compress/`, `dedup/`, and `pipeline.py`: parse, transform, verify.
+- `tokenizers/` and `adapters/`: counting tiers, model profiles, dated prices.
+- `integrations/`: generic hooks and a thin LangGraph adapter.
+- `profiler/`: per-edge records, JSONL trace analysis, text and HTML reports.
+- `handoff/`: source contracts, audits, repair proposals, bounded replay.
+- `eval/`: synthetic tasks, model clients, matrix evaluation, and plotting.
+- `cli.py`: profile, eval, audit, replay, experiment, and version commands.
+
+Register parsers with `register_parser()`, adjust field policies with
+`ProtectedFieldsRegistry`, and implement text transformations by subclassing
+`Compressor`. `register_profile()` adds model accounting defaults; a
+`ContentStore` subclass can provide external storage. Handoff replay integrates
+through a validator returning `ReplayOutcome`, independent of agent framework.

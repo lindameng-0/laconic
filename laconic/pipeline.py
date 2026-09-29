@@ -1,14 +1,14 @@
 """The processing pipeline: parse → dedup → compress → verify → rebuild.
 
-The pipeline's one promise: **it never breaks a workflow.** Any failure —
-unparseable message, compressor exception, round-trip mismatch — results in
-the original message passing through unchanged, with the fallback recorded in
-stats. The failure mode is always "no savings", never "corrupted handoff".
+The pipeline preserves message fields and recognized protected payload spans.
+Failures pass the original message through, with the fallback recorded in stats.
+These checks do not establish semantic equivalence or downstream task success.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,13 +16,15 @@ from laconic.adapters.profiles import keep_ratio_for
 from laconic.compress.base import Compressor
 from laconic.compress.extractive import ExtractiveCompressor
 from laconic.compress.passthrough import PassthroughCompressor
+from laconic.compress.segments import Segment, join_segments, segment_payload
 from laconic.compress.telegraphic import TelegraphicCompressor
 from laconic.dedup.session import SessionDedup
 from laconic.exceptions import LaconicError
 from laconic.message.model import CompressionStats
 from laconic.message.parsers import get_parser
 from laconic.message.protected import ProtectedFieldsRegistry
-from laconic.tokenizers.base import TokenCounter
+from laconic.tokenizers.base import CountTier, TokenCounter
+from laconic.tokenizers.heuristic import HeuristicCounter
 from laconic.tokenizers.registry import get_counter
 
 #: Built-in strategy names accepted by :class:`Session`.
@@ -91,6 +93,11 @@ class Session:
         self.strategy_name = compressor.name if compressor else strategy
         self.framework = framework
         self.counter = counter or get_counter(target_model, allow_api=allow_api_counting)
+        # Candidate generation must not call a remote counter for every word
+        # substitution. Provider counting validates the before/after pair only.
+        self._search_counter = (
+            HeuristicCounter(target_model) if self.counter.tier == CountTier.API else self.counter
+        )
         self.parser = get_parser(framework, registry=registry)
 
         if compressor is not None:
@@ -125,12 +132,18 @@ class Session:
         *,
         source_agent: str | None = None,
         target_agent: str | None = None,
+        context_payloads: Sequence[str] | None = None,
     ) -> ProcessedMessage:
         """Process one outgoing handoff message.
 
         Returns the message to actually send plus its
-        :class:`~laconic.message.CompressionStats`. Never raises for
-        malformed input — falls back to passthrough and records why.
+        :class:`~laconic.message.CompressionStats`. Parse and transformation
+        errors fall back to passthrough. A failed initial token count propagates
+        to the caller because no valid measurement is available.
+
+        ``context_payloads`` must contain the recipient's actual current
+        history, in message order, excluding ``raw``. Without it context dedup
+        does not replace blocks. The caller must not supply stale history.
         """
         tokens_before = self._count_message(raw)
         try:
@@ -139,6 +152,7 @@ class Session:
                 tokens_before=tokens_before,
                 source_agent=source_agent,
                 target_agent=target_agent,
+                context_payloads=context_payloads,
             )
         except LaconicError as exc:
             return self._fallback(raw, tokens_before, f"{type(exc).__name__}: {exc}")
@@ -152,7 +166,12 @@ class Session:
         tokens_before: int,
         source_agent: str | None,
         target_agent: str | None,
+        context_payloads: Sequence[str] | None,
     ) -> ProcessedMessage:
+        if self.strategy_name == "off":
+            return ProcessedMessage(
+                raw=raw, stats=self._stats(tokens_before, tokens_before, safe=True)
+            )
         message = self.parser.parse(raw)
         message.metadata.source_agent = source_agent
         message.metadata.target_agent = target_agent
@@ -165,17 +184,38 @@ class Session:
                 stats=self._stats(tokens_before, tokens_before, safe=True),
             )
 
-        payload = message.payload
+        segments = segment_payload(message.payload)
+        protected = [segment.text for segment in segments if segment.kind == "protected"]
+        output: list[Segment] = []
         dedup_hits = 0
-        if self.dedup is not None:
-            result = self.dedup.process(
-                payload,
-                recipient=target_agent or "default",
-                counter=self.counter,
-            )
-            payload, dedup_hits = result.text, result.hits
+        for segment in segments:
+            if segment.kind == "protected" or not segment.text.strip():
+                output.append(segment)
+                continue
+            text = segment.text
+            hits = 0
+            if self.dedup is not None:
+                result = self.dedup.process(
+                    text,
+                    recipient=target_agent or "default",
+                    counter=self._search_counter,
+                    context_payloads=context_payloads,
+                )
+                text, hits = result.text, result.hits
+                dedup_hits += hits
+            # A generated reference is a protocol token, not compressible prose.
+            if not hits:
+                text = self.compressor.compress(
+                    text, counter=self._search_counter, budget=self._budget
+                )
+            output.append(Segment(kind="text", text=text))
+        payload = join_segments(output)
 
-        payload = self.compressor.compress(payload, counter=self.counter, budget=self._budget)
+        protected_after = [
+            segment.text for segment in segment_payload(payload) if segment.kind == "protected"
+        ]
+        if protected_after != protected:
+            return self._fallback(raw, tokens_before, "protected payload span mismatch")
 
         rebuilt = self.parser.rebuild(message, payload=payload)
 
@@ -214,6 +254,8 @@ class Session:
             tokens_after=tokens_after,
             tier=self.counter.tier,
             safe=safe,
+            structure_preserved=safe,
+            protected_spans_preserved=safe,
             fell_back=fell_back,
             fallback_reason=fallback_reason,
             dedup_hits=dedup_hits,

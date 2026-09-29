@@ -106,7 +106,7 @@ def test_telegraphic_drops_function_words_keeps_content(counter: HeuristicCounte
     assert counter.count(out) < counter.count(text)
     for keeper in ("revenue", "Meridian Corp", "Q1 2026", "85.0 percent", "confident"):
         assert keeper in out
-    assert " very " not in out and " really " not in out
+    assert "very confident" in out and "really strong" in out
 
 
 def test_telegraphic_never_drops_negations(counter: HeuristicCounter) -> None:
@@ -127,3 +127,17 @@ def test_telegraphic_leaves_protected_segments_alone(counter: HeuristicCounter) 
 
     out = TelegraphicCompressor().compress(CODE_FENCED, counter=counter)
     assert "def handler(x):\n    return x * 2  # doubled" in out
+
+
+def test_telegraphic_preserves_uncertainty_and_scope(counter: HeuristicCounter) -> None:
+    from laconic.compress.telegraphic import TelegraphicCompressor
+
+    text = (
+        "The model is somewhat reliable. The backup is generally available. "
+        "The launch is just a proposal, and the rollout is fairly experimental. "
+        "The system is basically ready and essentially complete. Certainly! Try staging."
+    )
+    out = TelegraphicCompressor().compress(text, counter=counter)
+    for qualifier in ("somewhat", "generally", "just", "fairly", "basically", "essentially"):
+        assert qualifier in out
+    assert "Certainly!" in out

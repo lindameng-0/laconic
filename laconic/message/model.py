@@ -75,7 +75,15 @@ class CompressionStats(BaseModel):
     tokens_before: int
     tokens_after: int
     tier: CountTier
-    safe: bool = True
+    safe: bool = Field(
+        default=True,
+        description=(
+            "Backward-compatible structural status for the returned message; "
+            "does not imply semantic equivalence or downstream task success."
+        ),
+    )
+    structure_preserved: bool = True
+    protected_spans_preserved: bool = True
     fell_back: bool = False
     fallback_reason: str | None = None
     dedup_hits: int = 0

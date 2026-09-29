@@ -1,5 +1,10 @@
 # The benchmark and the tolerance study
 
+This is the original single-handoff information-survival fixture. The newer
+[executable handoff experiment](experiments.md) tests behavioral outcomes and
+bounded repair. Neither suite establishes real-model performance or production
+savings without additional evaluation.
+
 ## Research question
 
 **How much compression does inter-agent traffic tolerate, per model, before
@@ -84,13 +89,14 @@ in the README), and one `tolerance_<model>.png` per model.
 ## Example offline run (mock client — information survival, not model accuracy)
 
 Produced by `laconic eval --tasks data/benchmark --out results` on the shipped
-seed-7 dataset (120 tasks, laconic v0.1.0). Reproducible in seconds:
+seed-7 dataset (120 tasks, current unreleased implementation; estimator-tier
+counts). Reproduced after the qualifier-preservation fixes:
 
 | model | strategy | keep ratio | tasks | accuracy | mean token ratio |
 |---|---|---:|---:|---:|---:|
 | mock | passthrough | — | 120 | 1.000 | 1.000 |
 | mock | laconic-conservative | — | 120 | 1.000 | 0.936 |
-| mock | laconic-telegraphic | — | 120 | 1.000 | 0.886 |
+| mock | laconic-telegraphic | — | 120 | 1.000 | 0.919 |
 | mock | laconic-budgeted | 0.90 | 120 | 0.967 | 0.835 |
 | mock | laconic-budgeted | 0.75 | 120 | 0.850 | 0.729 |
 | mock | laconic-budgeted | 0.60 | 120 | 0.600 | 0.620 |
@@ -104,7 +110,8 @@ seed-7 dataset (120 tasks, laconic v0.1.0). Reproducible in seconds:
 
 Per-family, the structure-preservation effect is stark: `tool_plan_handoff`
 stays at **1.000 under Laconic at every ratio** (structure is untouchable by
-construction) while naive falls to 0.008 at ratio 0.30. The families degrade
+construction) while naive falls to **0 / 40** at ratio 0.30. The 0.008 figure
+in the table is across all 120 tasks, not the tool-plan family. The families degrade
 in the predicted order as budgets tighten: tool plans never, extraction and
 constraints progressively — the tolerance curve, not a cliff.
 
@@ -115,6 +122,14 @@ confuse them). That comparison is the open research question this harness
 exists to answer.
 
 ## Interpreting results
+
+The legacy `safe_operating_points` name refers to an observed threshold selected
+on this same dataset. It has no confidence interval, held-out calibration or
+deployment guarantee. The structure-blind naive comparator is a negative
+control, not a strong competitive baseline. The prose scorer checks substring
+presence and cannot establish polarity or actual constraint compliance. Every
+task creates a fresh session, so this suite does not measure dedup, history
+eviction, caching or rehydration.
 
 - The **passthrough** row is the accuracy ceiling and the token baseline.
 - `laconic-conservative` should sit at (or within tolerance of) the ceiling

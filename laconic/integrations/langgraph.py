@@ -57,6 +57,8 @@ class LangGraphCompressor:
         only_new: int = 1,
         **session_kwargs: Any,
     ) -> None:
+        if only_new < 0:
+            raise ValueError("only_new must be non-negative")
         session = Session(
             target_model=target_model,
             strategy=strategy,
@@ -87,13 +89,22 @@ class LangGraphCompressor:
             return messages
         split = max(0, len(messages) - self.only_new)
         head = list(messages[:split])
+        context: list[str] = []
+        for message in head:
+            content = _to_dict(message).get("content")
+            context.append(content if isinstance(content, str) else "")
         tail = []
         for message in messages[split:]:
             raw = _to_dict(message)
             processed = self.hook.process_message(
-                raw, source_agent=source_agent, target_agent=target_agent
+                raw,
+                source_agent=source_agent,
+                target_agent=target_agent,
+                context_payloads=context,
             )
             tail.append(message if processed is raw else _from_dict(processed, message))
+            content = processed.get("content")
+            context.append(content if isinstance(content, str) else "")
         return head + tail
 
     def as_node(self, source_agent: str | None = None, target_agent: str | None = None) -> Any:

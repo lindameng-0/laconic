@@ -14,6 +14,7 @@ venv/
 .coverage
 htmlcov/
 .mypy_cache/
+.cache/
 
 # Docs
 site/

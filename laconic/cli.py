@@ -12,8 +12,110 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import importlib
+import json
 import sys
 from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be positive")
+    return number
+
+
+def _nonnegative_int(value: str) -> int:
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be nonnegative")
+    return number
+
+
+def _read_handoff_trace(path: str):
+    from laconic.handoff import Handoff, HandoffContract
+
+    class Trace(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        contract: HandoffContract
+        handoffs: list[Handoff] = Field(min_length=1)
+
+    # Explicit types resolve local annotations even with postponed evaluation.
+    Trace.model_rebuild(_types_namespace={"HandoffContract": HandoffContract, "Handoff": Handoff})
+    return Trace.model_validate_json(Path(path).read_text(encoding="utf-8"))
+
+
+def _write_json(data: dict, output: str | None, *, input_path: str | None = None) -> None:
+    rendered = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if output:
+        path = Path(output)
+        if input_path and path.resolve() == Path(input_path).resolve():
+            raise ValueError("output must not overwrite the input evidence trace")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(rendered, encoding="utf-8")
+    else:
+        print(rendered, end="")
+
+
+def _check_output(args: argparse.Namespace) -> None:
+    if args.out and Path(args.out).resolve() == Path(args.trace).resolve():
+        raise ValueError("output must not overwrite the input evidence trace")
+
+
+def _cmd_audit(args: argparse.Namespace) -> int:
+    from laconic.handoff import audit_handoffs
+
+    _check_output(args)
+    trace = _read_handoff_trace(args.trace)
+    report = audit_handoffs(trace.contract, trace.handoffs)
+    _write_json(report.model_dump(mode="json"), args.out, input_path=args.trace)
+    # A missing quotation is a diagnostic, not a proven semantic failure.
+    return 0
+
+
+def _cmd_replay(args: argparse.Namespace) -> int:
+    from laconic.handoff import diagnose_handoff
+    from laconic.tokenizers.registry import get_counter
+
+    _check_output(args)
+    trace = _read_handoff_trace(args.trace)
+    module_name, separator, function_name = args.validator.partition(":")
+    if not separator or not module_name or not function_name or ":" in function_name:
+        raise ValueError("validator must have the form importable.module:function")
+    validator = getattr(importlib.import_module(module_name), function_name)
+    if not callable(validator):
+        raise ValueError("validator must name a callable")
+    result = diagnose_handoff(
+        trace.contract,
+        trace.handoffs[0].text if len(trace.handoffs) > 1 else None,
+        trace.handoffs[-1].text,
+        validator,
+        max_evaluations=args.max_evaluations,
+        max_added_tokens=args.max_added_tokens,
+        counter=get_counter(args.model),
+        validator_name=args.validator,
+    )
+    _write_json(result.model_dump(mode="json"), args.out, input_path=args.trace)
+    return 0 if result.success is True else 1
+
+
+def _cmd_experiment(args: argparse.Namespace) -> int:
+    from laconic.eval.handoff_experiment import run_experiment, summarize_experiment
+    from laconic.tokenizers.registry import get_counter
+
+    result = run_experiment(
+        seed=args.seed,
+        variants=args.variants,
+        counter=get_counter(args.model),
+        max_evaluations=args.max_evaluations,
+    )
+    _write_json(result, args.out)
+    if args.out:
+        print(summarize_experiment(result))
+        print(f"Full experiment record: {args.out}")
+    return 0
 
 
 def _cmd_profile(args: argparse.Namespace) -> int:
@@ -71,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     """Entry point for the ``laconic`` console script."""
     parser = argparse.ArgumentParser(
         prog="laconic",
-        description="Token-efficient middleware for multi-agent LLM workflows.",
+        description="Audit, replay, and optimize agent handoffs with source-backed evidence.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -97,8 +199,40 @@ def main(argv: list[str] | None = None) -> int:
     p_version = sub.add_parser("version", help="print the version")
     p_version.set_defaults(func=_cmd_version)
 
+    p_audit = sub.add_parser("audit", help="trace where declared source clauses disappear")
+    p_audit.add_argument("trace", help="JSON object containing contract and handoffs")
+    p_audit.add_argument("--out", help="write the audit JSON (default: stdout)")
+    p_audit.set_defaults(func=_cmd_audit)
+
+    p_replay = sub.add_parser("replay", help="test source-backed repairs with your task validator")
+    p_replay.add_argument("trace", help="JSON trace; first handoff is baseline, last is candidate")
+    p_replay.add_argument(
+        "--validator",
+        required=True,
+        help="importable.module:function returning ReplayOutcome; runs caller-owned Python code",
+    )
+    p_replay.add_argument("--max-evaluations", type=_positive_int, default=8)
+    p_replay.add_argument("--max-added-tokens", type=_nonnegative_int)
+    p_replay.add_argument(
+        "--model", default="offline", help="local tokenizer target; no model call"
+    )
+    p_replay.add_argument("--out", help="write the full replay record as JSON (default: stdout)")
+    p_replay.set_defaults(func=_cmd_replay)
+
+    p_experiment = sub.add_parser("experiment", help="run scripted handoff fault-injection checks")
+    p_experiment.add_argument("--seed", type=int, default=7)
+    p_experiment.add_argument("--variants", type=_positive_int, default=3)
+    p_experiment.add_argument("--max-evaluations", type=_positive_int, default=8)
+    p_experiment.add_argument("--model", default="offline", help="tokenizer target; no model call")
+    p_experiment.add_argument("--out", help="write full JSON; print a compact summary")
+    p_experiment.set_defaults(func=_cmd_experiment)
+
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (ValueError, OSError, ImportError, AttributeError) as exc:
+        print(f"laconic: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

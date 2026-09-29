@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "laconic"
 version = "0.1.0"
-description = "Token-efficient middleware for multi-agent LLM workflows: structure-preserving compression, dedup, and profiling for inter-agent messages."
+description = "Source-backed handoff auditing, bounded task replay, and structure-preserving compression for agent workflows."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"

@@ -1,101 +1,69 @@
-# Laconic — Revised Build Plan
+﻿# Laconic build plan
 
-This document is the working plan for the repository. It started from an external
-build prompt; the changes below were made after a critique pass. Each change is
-recorded so the design rationale survives (see also `docs/design-decisions.md`).
+## Current direction
 
-## What Laconic is
+Help developers inspect what happens to declared requirements across agent
+handoffs, and test source-backed repairs against their own downstream task.
+Message compression remains an optional transformation with explicit structural
+and accounting limits.
 
-Middleware that reduces the tokens spent when agents in a multi-agent LLM workflow
-pass messages to each other, for users of closed models (Claude, GPT) where only the
-text channel is available. It compresses the natural-language payload of inter-agent
-handoffs while preserving structural scaffolding (tool calls, arguments, IDs, schema
-fields) losslessly — and never breaks the workflow.
+The immediate audience is a team with a reproducible agent workflow and an
+executable outcome check, such as a coding workflow with regression tests.
+Success means a useful, reproducible improvement in completed work or cost per
+successful task. A compression ratio alone is insufficient evidence.
 
-The research contribution is a characterization of **cross-model compression
-tolerance**: per model, an accuracy-vs-compression-ratio curve, the safe operating
-point, and evidence that structure-preserving compression extends the safe frontier
-relative to naive whole-message compression.
+## Implemented foundations
 
-## Critique: changes made to the original plan
+- Message parsers separate structural fields from prose; the pipeline protects
+  recognized payload spans across dedup and custom transformations.
+- Token counts carry provenance. API counting checks original/final messages,
+  with local heuristic candidate search.
+- Measurement mode is inert. Initial count errors propagate; subsequent
+  transformation failures return the original message with a recorded reason.
+- Context dedup requires the actual current recipient history. Generic and
+  LangGraph hooks default to processing only the newest message.
+- Source contracts validate exact quote membership and retain source hashes.
+  Audits locate observed quote loss; repair appends cited clauses under an
+  optional token-growth cap.
+- Bounded replay requires a passing source-complete baseline, runs caller-owned
+  validators, records every attempt, and performs at most one greedy deletion
+  pass. It reports errors and incomplete reduction explicitly.
+- CLI audit/replay commands and scripted fault-injection experiments make the
+  mechanics reproducible. Existing profiling, compression, and synthetic
+  evaluation remain available.
 
-| # | Original plan | Problem | Change |
-|---|---|---|---|
-| 1 | Dedup "rehydrates on receive" | Tokens are only spent at the model boundary. If content is rehydrated before the receiving model reads it, nothing is saved. | Dedup has two explicit modes: **context-dedup** (replace content the recipient already has earlier in its own context window — the model can look back) and **store-dedup** (handle + a rehydration tool the receiving agent can call on demand). Docs state precisely when each pays. |
-| 2 | "Be aware of and document provider prompt-caching" | Too weak. Rewriting message history breaks provider prefix-caching, and cached input tokens are ~10x cheaper — naive dedup can *increase* cost. | Dedup is **prefix-stable**: previously sent messages are never rewritten; only new content is deduplicated. `docs/limitations.md` carries a dedup-vs-provider-caching decision table. |
-| 3 | Abbreviation dictionary "in the spirit of CompactPrompt" | Underspecified receiver contract: abbreviated text without a legend risks comprehension; a legend costs tokens. | Substitutions restricted to a curated legend-free list (expansions any modern model reads natively, e.g. "for example" → "e.g."). Every substitution is applied **only if it reduces token count under the target model's tokenizer**. Optional legend mode exists with documented amortization math. |
-| 4 | Anthropic token counting via the API endpoint | It's a network call requiring a key — an offline profiler can't depend on it, and per-substitution checks would be absurdly slow. | Three-tier token counting, never silently mixed: `exact` (tiktoken, local), `api` (Anthropic count-tokens endpoint, opt-in), `estimate` (calibrated offline heuristic, labeled with expected error). Every stat records its tier. |
-| 5 | Module named `laconic/tokenize/` | Shadows the stdlib `tokenize` module name; ruff (A005) flags it. | Renamed to `laconic/tokenizers/`. |
-| 6 | "Report the accuracy delta" (mechanism unspecified) | Not actionable as written. | Three concrete levels: (a) structural round-trip check — free, always on; (b) task-level accuracy on verifiable benchmark answers; (c) optional LLM-judge faithfulness score — opt-in, costs tokens. Reports label which level produced the number. |
-| 7 | "A fixed multi-agent benchmark" (no tasks defined, no data) | Not reproducible; repo needs data. | A versioned benchmark dataset ships in `data/benchmark/`: three task families with verifiable ground truth (extraction relay, tool-plan handoff, constraint tracking), produced by a committed, seeded generator (`laconic/eval/generate.py`). |
-| 8 | Toy example implies real API calls | CI and first-touch UX must not require keys. | A deterministic `MockModelClient` powers the toy example and all tests; real OpenAI/Anthropic clients are opt-in. |
-| 9 | Single dependency pool | LLMLingua pulls torch; tiktoken/anthropic/langgraph aren't universally wanted. | Core install depends on pydantic only. Extras: `[openai]`, `[anthropic]`, `[llmlingua]`, `[langgraph]`, `[plots]`, `[docs]`, `[dev]`, `[all]`. The offline estimator keeps the zero-extra install useful. |
-| 10 | Property test: "no compressor alters structural fields" | The architecture makes that impossible *by construction* (compressors only ever receive `payload`) — the test as stated can't fail. The actual corruption risk is parse → rebuild. | The property test targets the **parser/serializer round-trip**: over a synthetic corpus, structural content is byte-identical through parse → rebuild, and passthrough rebuild equals the original message exactly. |
-| 11 | (absent) | Naive-compression baseline needed for the headline comparison. | `NaiveWholeMessageCompressor` — compresses the serialized message including structure — implemented *for the eval only*, clearly marked as the thing Laconic exists to avoid. |
-| 12 | (minor) | — | Pricing table carries an as-of date and is user-overridable; CHANGELOG kept; Python 3.10–3.13; CI on Ubuntu + Windows; `laconic profile trace.jsonl` works standalone so the profiler is useful before any integration. |
+These are implementation milestones. They do not establish semantic
+preservation, production savings, improved LLM performance, or unique novelty.
+The API and limits are documented in [docs/api-reference.md](docs/api-reference.md)
+and [docs/limitations.md](docs/limitations.md).
 
-Unfilled fields from the original prompt, resolved:
+## Next gate: real workflow evidence
 
-- **Package name**: `laconic` — verified available on PyPI (404 on 2026-07-02).
-- **First framework integration**: LangGraph (largest install base; its message-list state maps cleanly to a middleware hook), plus a framework-agnostic generic hook.
-- **Models**: tokenizer backends and profiles for OpenAI and Anthropic; the eval harness runs offline on a mock client and accepts real clients when keys exist.
+1. Collect representative, permissioned traces from a small number of teams
+   running one well-defined workflow. Record the full original task, actual
+   recipient context, source versions, and executable success criteria.
+2. Reproduce observed failures before attributing them to a handoff. Separate
+   missing information from misunderstood information, bad sources, and unrelated
+   task failures.
+3. Compare held-out tasks against unchanged and concise structured handoffs,
+   artifact references, appropriate context modes, and established protected
+   compression or summarization. Count source-selection and integration effort.
+4. Repeat stochastic runs with controlled task state. Include cached input,
+   output, retries, retrieval, validation overhead, latency, and success rate.
+   Report uncertainty and failures alongside any benefit.
+5. Pre-register an adoption and outcome threshold with participating teams.
+   Expand only if the benefit survives those baselines and teams retain the
+   integration. If simple existing controls match it, narrow or stop the product
+   thesis rather than adding more compression features.
 
-## Architecture (unchanged in spirit, tightened in contract)
+See [docs/experiments.md](docs/experiments.md) for the current experiment scope.
+The first credible claim should be about an observed workflow improvement;
+broader research or breakthrough claims require stronger evidence.
 
-```
-raw message ──parse──▶ Message{structural, payload, metadata}
-                          │
-                          ├─ structural  ──────────────── untouched ──┐
-                          └─ payload ─▶ dedup ─▶ compressor ─▶ verify ┴─▶ rebuild
-                                                              │
-                                              fail ⇒ passthrough + fallback recorded
-```
+## Scope boundaries
 
-Data contracts (enforced in code and tests):
-
-1. A compressor only ever sees `payload`. It is structurally impossible for it to
-   corrupt `structural`.
-2. Every `CompressionStats` includes original tokens, compressed tokens, ratio,
-   model, strategy, token-count tier, a safety flag, and whether fallback occurred.
-3. If parsing or the post-rebuild verification fails, the pipeline emits the original
-   message unchanged and records the fallback. Failure mode is always "no savings",
-   never "broken workflow".
-4. All savings are measured in tokens via the target model's tokenizer tier — never
-   in characters.
-
-## Modules
-
-- `laconic/tokenizers/` — tiered token counting (`exact` / `api` / `estimate`).
-- `laconic/message/` — `Message` model, protected-fields registry, framework parsers
-  (OpenAI chat format, LangChain/LangGraph messages) with round-trip guarantee.
-- `laconic/compress/` — `Compressor` interface; `Passthrough`, `Extractive`
-  (filler pruning + token-checked abbreviations + novelty-based sentence pruning),
-  optional `LLMLingua` adapter, and the eval-only `NaiveWholeMessage` baseline.
-- `laconic/dedup/` — session content store; context-dedup and store-dedup modes;
-  prefix-stable by construction.
-- `laconic/adapters/` — per-model profiles: tolerance defaults, pricing (as-of date),
-  tokenizer binding.
-- `laconic/integrations/` — generic hook + thin LangGraph integration.
-- `laconic/profiler/` — handoff records, cost estimates, text + HTML reports, JSONL
-  trace reader; standalone CLI.
-- `laconic/eval/` — benchmark task model, seeded generator, model clients (mock +
-  real), matrix runner {model} × {strategy} × {ratio}, metrics (accuracy, safe
-  operating point), plotting. **No fabricated numbers** — the harness produces them.
-
-## Build phases
-
-- **Phase 0** — scaffold: package, pyproject, CI, docs skeleton, license. ✔ importable.
-- **Phase 1** — measurement core: tokenizers, Message + parsers, passthrough, profiler,
-  toy example runs offline with a real token report.
-- **Phase 2** — compression: extractive + optional LLMLingua; round-trip invariant
-  tests pass; profiler shows before/after.
-- **Phase 3** — dedup: content store, context/store modes, caching interactions documented.
-- **Phase 4** — integration: generic hook + LangGraph, end-to-end example.
-- **Phase 5** — eval harness: benchmark data, matrix runner, metrics, plots, results
-  templates in README (numbers left to a real run).
-
-## What this will not claim
-
-- No latent-space or order-of-magnitude gains: realistic 1.3–3x on chatty payloads,
-  less on structure-heavy traffic; stated plainly in README and `docs/limitations.md`.
-- No invented benchmark numbers anywhere, including the README results table.
+No automatic source-authority selection, semantic-equivalence guarantee, global
+minimal repair, proven causal root cause, universal compression ceiling, or fixed
+cache discount is assumed. No real-model result is filled in without a recorded
+run. Keep the library small until the real-workflow gate identifies the next
+necessary capability.

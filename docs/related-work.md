@@ -1,97 +1,66 @@
-# Related work
+﻿# Related work
 
-Where Laconic sits, stated plainly. Laconic is a *systems* contribution
-(middleware + measurement) built on ideas from several research lines; the
-novel part is the structure/payload split applied to inter-agent traffic and
-the cross-model tolerance characterization, not any individual compression
-technique.
+Laconic combines established techniques into a small measurement, transformation,
+and handoff-diagnosis library. Protected text, artifact references, and context
+isolation are not new inventions here. The useful question is whether this
+implementation improves a real workflow over strong existing baselines.
 
-## Token pruning: LLMLingua / LongLLMLingua / LLMLingua-2
+## Prompt compression and protected sections
 
-The LLMLingua family (Jiang et al., 2023; LLMLingua-2, Pan et al., 2024) uses
-a small language model to identify and drop low-information tokens, achieving
-strong ratios on prose: documents, RAG context, long instructions.
-LongLLMLingua adds question-aware document-level pruning for long contexts.
+The LLMLingua family provides learned token pruning, including question-aware
+compression and LLMLingua-2. Its structured-prompt interface already lets callers
+segment text and mark sections with `compress=False`. Laconic must not claim
+that protected spans are absent from existing prompt compressors.
+[Microsoft LLMLingua documentation](https://github.com/microsoft/LLMLingua#3-advanced-usage---structured-prompt-compression).
 
-**Relation.** Laconic is complementary, not competitive: the optional
-`LLMLinguaCompressor` adapter runs LLMLingua-2 *inside* Laconic's safety
-pipeline, where it only ever sees free-text payload segments. What Laconic
-adds is exactly what the LLMLingua family does not target: hard structural
-guarantees on agent traffic. Evaluations of prose-tuned compression applied
-to agentic/tool-use tasks report sharp task failure beyond modest ratios —
-the format the agents depend on gets destroyed even when the semantic content
-survives. That observed fragility is the motivating evidence for ADR-2, and
-the eval harness's naive baseline reproduces the phenomenon in a controlled
-way.
+Laconic supplies message parsers, protected-span enforcement across its
+transformation pipeline, accounting provenance, and an optional LLMLingua
+adapter. Its structure-blind naive baseline demonstrates one failure mode; it
+does not establish superiority to properly configured structured compression.
 
-## Abbreviation dictionaries: CompactPrompt and similar
+Readable abbreviation dictionaries and compact serialization address other
+sources of token overhead. Laconic uses a small legend-free dictionary and
+keeps structural field values unchanged. It does not establish the best
+representation or compression method for a particular workload.
 
-CompactPrompt-style approaches shrink prompts with reusable abbreviation
-dictionaries and redundancy removal, without an external compression model.
+## Artifact references and long-running agents
 
-**Relation.** Laconic's `ExtractiveCompressor` adopts the dictionary idea in
-deliberately restricted form: a curated, legend-free list (ADR-4), each
-substitution token-checked against the *target model's* tokenizer (ADR-3).
-The restriction is the point — an abbreviation the receiver may not
-understand, or one that tokenizes longer than its expansion, is a net loss in
-this setting.
+Anthropic's June 13, 2025 account of its multi-agent research system describes
+subagents storing outputs externally and returning lightweight references. Its
+appendix also discusses summaries, external memory, and handoffs into fresh
+contexts. These are precedents for avoiding repeated transmission of complete
+artifacts.
+[Anthropic engineering article](https://www.anthropic.com/engineering/multi-agent-research-system).
 
-## Compact serialization: TOON and friends
+Laconic's content store and references use this general pattern. Its source
+contracts add explicit caller-selected quotes, hashes, and presence tracking.
+An exact-quote audit provides evidence about text survival; it cannot establish
+that the evidence is sufficient, current, or understood.
 
-Token-Oriented Object Notation and similar formats re-serialize structured
-data (JSON) into representations that tokenize more cheaply, claiming
-30–60% savings on data-heavy payloads.
+## Context isolation and inherited context
 
-**Relation.** Orthogonal axis: TOON compresses the *structure itself* by
-changing its syntax; Laconic protects structure byte-for-byte and compresses
-the *prose around it*. They could compose — a TOON-style serializer could be
-registered as a (reversible) transformation for structural fields — but
-Laconic v0.1 does not alter structure on principle: the receiving agent, and
-any middleware between, must parse whatever format the structure arrives in,
-and silent format changes are precisely the class of breakage this project
-exists to prevent.
+LangChain's September 8, 2026 description of Deep Agents supports both
+`isolated` and `fork` subagent modes. Isolated agents receive a task in a fresh
+context; forked agents inherit the supervisor's conversation. The article
+discusses task-dependent choices and the interaction with prompt caching.
+[LangChain context-mode design](https://www.langchain.com/blog/organizing-context-in-a-multi-agent-harness).
 
-## Latent / implicit inter-agent communication
+A concise handoff with retrieval must therefore be compared with inherited
+context and existing framework controls. More context can avoid repeated work;
+fewer transmitted tokens do not by themselves imply lower whole-run cost.
+Laconic's hooks leave earlier messages unchanged by default, but do not select
+context modes or measure provider cache eligibility.
 
-A growing research line replaces text hops between cooperating agents with
-hidden-state exchange or learned latent codes, reporting large efficiency
-multiples over natural-language message passing.
+## What remains to be demonstrated
 
-**Relation.** Unavailable by construction to Laconic's users: closed-model
-APIs expose no hidden states, no KV caches, and no way to inject latent
-vectors (ADR-1). Laconic is the pragmatic complement — how far can the
-*text* channel be pushed on infrastructure people actually run today. The
-honest answer (a small-integer factor, not an order of magnitude) is part of
-the project's contribution: it quantifies what staying in the text channel
-costs.
+Bounded replay compares a baseline, a candidate, and source-backed additions
+using a caller's downstream task validator. It makes each attempt inspectable
+and limits callback count. This is an engineering mechanism, not evidence of a
+new research result or a complete semantic diagnosis.
 
-## Provider prompt caching
-
-Anthropic and OpenAI both bill cache-hit input tokens at a large discount,
-keyed on exact context prefixes.
-
-**Relation.** Not compression, but the single most important deployment
-interaction: middleware that rewrites message history destroys prefix-cache
-hits and can *raise* net cost. Laconic's dedup and integration hooks are
-prefix-stable by design (ADR-6), and `docs/limitations.md` carries the
-decision table for when dedup vs. provider caching wins.
-
-## Multi-agent framework telemetry
-
-Frameworks (LangGraph, CrewAI, AutoGen) and observability tools report token
-usage per run, and some offer history-trimming or summarization utilities.
-
-**Relation.** Laconic's profiler differs in aiming at the *handoff* level
-(per-edge accounting: which agent-to-agent seam burns the tokens) and in
-being framework-agnostic (a JSONL trace suffices — no integration required).
-Its summarization stance also differs: extractive-only by default, because a
-summarizer that paraphrases can silently alter facts in ways that are
-invisible until a downstream agent acts on them.
-
-## The gap Laconic fills
-
-To our knowledge no existing open tool combines: (1) hard structural
-protection on agent messages, (2) per-model token-measured transformations
-with provenance-labeled counting, (3) cache-aware session dedup, and (4) a
-reproducible cross-model compression-tolerance benchmark for agent traffic.
-That combination — rather than any single technique — is the contribution.
+A credible comparison should include unchanged handoffs, concise structured
+handoffs, artifact references, appropriate framework context modes, protected
+prompt compression, and simple summarization where applicable. Evaluate
+completed tasks, actual total cost, latency, retries, and missing or
+misinterpreted requirements. The synthetic tests and scripted experiment
+fixtures do not substitute for that study. See [experiments](experiments.md).

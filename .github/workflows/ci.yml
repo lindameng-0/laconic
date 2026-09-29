@@ -29,9 +29,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,langgraph]"
       - run: pytest --cov=laconic --cov-report=term
       # The toy example and the offline eval must actually run — they are the
       # first thing a new user tries.
       - run: python examples/two_agent_toy/run.py --strategy conservative
       - run: laconic eval --tasks data/benchmark --out results --ratios 0.6
+      - run: python examples/handoff_repair/run.py
+      - run: laconic experiment --variants 1 --out results/handoff-experiment.json

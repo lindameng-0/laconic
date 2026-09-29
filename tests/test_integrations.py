@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from laconic.compress.passthrough import PassthroughCompressor
 from laconic.integrations.generic import CompressingHook
-from laconic.integrations.langgraph import LangGraphCompressor
+from laconic.integrations.langgraph import LangGraphCompressor, make_compression_node
 from laconic.pipeline import Session
 
 VERBOSE = (
@@ -70,3 +71,57 @@ def test_tool_call_messages_pass_through_langgraph() -> None:
     }
     out = compressor.compress_messages([message])
     assert out[0] == message  # tool-call messages are protected wholesale
+
+
+def test_generic_default_preserves_history_and_uses_only_active_context() -> None:
+    hook = CompressingHook(Session("test-model", compressor=PassthroughCompressor()))
+    original = {"role": "assistant", "content": VERBOSE}
+    first = hook.process_messages([original], target_agent="writer")
+    assert first == [original]
+    repeated = hook.process_messages([original, dict(original)], target_agent="writer")
+    assert repeated[0] is original
+    assert "[ref lc:" in repeated[1]["content"]
+    assert "earlier message 1, paragraph 1" in repeated[1]["content"]
+    reset = hook.process_messages([original], target_agent="writer")
+    assert reset == [original]
+
+
+def test_explicit_full_history_processing_does_not_invent_previous_messages() -> None:
+    hook = CompressingHook(Session("test-model", compressor=PassthroughCompressor()))
+    original = {"role": "assistant", "content": VERBOSE}
+    for _ in range(2):
+        result = hook.process_messages([original, dict(original)], only_new=None)
+        assert result[0] == original
+        assert "[ref lc:" in result[1]["content"]
+
+
+def test_langgraph_node_does_not_share_context_between_fresh_runs() -> None:
+    node = make_compression_node("test-model", compressor=PassthroughCompressor())
+    original = {"type": "ai", "content": VERBOSE}
+    for _ in range(2):
+        result = node({"messages": [original]})
+        assert result["messages"] == [original]
+    result = node({"messages": [original, dict(original)]})
+    assert result["messages"][0] is original
+    assert "[ref lc:" in result["messages"][1]["content"]
+
+
+def test_real_langgraph_reducer_preserves_ids_and_history() -> None:
+    import pytest
+
+    pytest.importorskip("langgraph")
+    from langchain_core.messages import AIMessage, HumanMessage
+    from langgraph.graph import END, START, MessagesState, StateGraph
+
+    graph = StateGraph(MessagesState)
+    graph.add_node("compress", make_compression_node("test-model", strategy="conservative"))
+    graph.add_edge(START, "compress")
+    graph.add_edge("compress", END)
+    app = graph.compile()
+    result = app.invoke({"messages": [HumanMessage(content="start"), AIMessage(content=VERBOSE)]})
+    messages = result["messages"]
+    assert len(messages) == 2
+    assert messages[0].content == "start"
+    assert messages[1].content != VERBOSE
+    assert len({message.id for message in messages}) == 2
+    assert all(message.id for message in messages)

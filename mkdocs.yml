@@ -1,5 +1,5 @@
 site_name: Laconic
-site_description: Token-efficient middleware for multi-agent LLM workflows
+site_description: Source-backed handoff auditing, bounded replay, and agent context efficiency
 repo_url: https://github.com/lindameng-0/laconic
 theme:
   name: material
@@ -20,6 +20,8 @@ theme:
 
 nav:
   - Home: index.md
+  - Handoff auditing and replay: handoffs.md
+  - Executable experiments: experiments.md
   - Architecture: architecture.md
   - Design decisions (ADRs): design-decisions.md
   - Limitations: limitations.md

@@ -1,182 +1,98 @@
-# Design decisions (ADRs)
+﻿# Design decisions (ADRs)
 
-Each entry records the context, the decision, and its consequences. These are
-the reasons the code looks the way it does; change them only with a new ADR.
+These decisions describe the current implementation. Later entries tighten
+earlier assumptions; they do not retroactively establish measured model outcomes.
 
----
+## ADR-1 — Operate at the text boundary
 
-## ADR-1 — Text channel only (the closed-model constraint)
+Laconic processes messages available through ordinary application interfaces.
+It does not require hidden states, KV-cache access, fine-tuning, or a new learned
+communication code. This makes the core framework-independent, while parser and
+integration coverage still determine what it supports. Savings and behavior must
+be measured on the target task; no universal text-channel ceiling is asserted.
 
-**Context.** The target users run large closed models (Claude, GPT) through
-public APIs. Research on efficient inter-agent communication increasingly
-explores latent-space channels — exchanging hidden states or learned codes
-instead of text — but every such technique requires access to model internals
-that API users categorically do not have.
+## ADR-2 — Separate structure and verify the whole transformation
 
-**Decision.** Laconic operates exclusively on the text that agents already
-exchange. No new representation, no fine-tuning, no assumptions about model
-internals, no provider-specific private features.
+Parsers separate protected fields from prose. The pipeline segments prose around
+recognized code, JSON, and tables before either dedup or compression, including
+custom compressors. It verifies protected spans and rebuilt structural fields
+afterward. This supports a structural preservation claim. Prose semantics and
+task completion require separate checks. The naive whole-message compressor is
+a negative control, not a sufficient competitive baseline.
 
-**Consequences.** The achievable ceiling is bounded by what natural language
-redundancy allows (see ADR-7). In exchange, the tool works today, on every
-provider, with zero deployment friction — and results transfer across models,
-which is precisely what the research question (cross-model tolerance) needs.
+## ADR-3 — Count tokens and label the counting scope
 
----
+Transformations are assessed in tokens rather than characters. Abbreviations can
+be shorter yet tokenize worse. A local counter guides candidate selection; final
+before/after counts use the configured counter. These are serialized-message
+measurements. Whole-request billing also depends on framing, output, caching,
+tools, retries, and the provider's accounting.
 
-## ADR-2 — Structure-preserving compression
+## ADR-4 — Keep default abbreviations readable without a legend
 
-**Context.** Agent-to-agent messages are structure plus prose, and the
-structure is load-bearing. Published evaluations of general-purpose prompt
-compression on agent/tool tasks report abrupt task failure beyond modest
-ratios: not graceful degradation, but broken JSON, lost tool names, corrupted
-IDs — even when the "meaning" survives. A compressor that treats a message as
-prose optimizes exactly the wrong objective.
+The built-in dictionary uses familiar substitutions and selected filler removal.
+No codebook is injected. Negation and qualifiers must not be discarded as mere
+verbosity. Familiarity and token savings do not prove equivalent interpretation;
+even the conservative strategy needs task validation when meaning is critical.
 
-**Decision.** Every message is decomposed into a protected structural part and
-a compressible payload. Compressors receive only the payload string — the API
-makes structural corruption unrepresentable rather than merely tested-against.
-The payload itself is segmented, and embedded structure (code fences, JSON
-paragraphs, tables) is protected as well. Messages that cannot be parsed
-confidently pass through untouched.
+## ADR-5 — Separate offline search from provider counting
 
-**Consequences.** Structure-heavy traffic compresses little (that is correct
-behavior, stated in the docs, not hidden). The invariant test suite pins the
-guarantee. The eval harness includes a deliberately naive whole-message
-compressor as a baseline to quantify what this decision buys.
+Every count reports `exact`, `api`, or `estimate` provenance. Normal operation
+does not require network counting. With an API counter, a local heuristic handles
+candidate search and the API counts the original and final message. This avoids
+a remote request for each substitution. A failed initial count propagates;
+without it a trustworthy fallback measurement cannot be produced. Handoff repair
+and replay reject API counters.
 
----
+## ADR-6 — Require current context for context dedup
 
-## ADR-3 — Tokens, never characters
+Earlier recipient exposure is insufficient after a reset, fork, eviction, or
+compaction. Context references therefore require the identical block in supplied
+`context_payloads`, representing the actual current recipient history. Missing
+context evidence disables these replacements. Store-mode references instead
+require an available rehydration tool and include retrieval overhead in any
+economic evaluation.
 
-**Context.** All costs and context limits are denominated in model-specific
-tokens. Character counts are actively misleading: an "abbreviation" that is
-shorter in characters can tokenize to *more* tokens (`w.r.t.` is a classic
-offender), and different models tokenize the same string differently.
+Generic hooks now default to `only_new=1`, matching the LangGraph adapter.
+Explicit `only_new=None` can rewrite the whole history and its cache prefix.
+Provider cache behavior and pricing must be measured rather than inferred from
+recipient names or a fixed discount.
 
-**Decision.** Every saving anywhere in Laconic is computed by a
-`TokenCounter` bound to the target model. Individual transformations
-(each abbreviation substitution, each dedup replacement) are accepted only if
-they reduce the token count under that counter. A test pins the adversarial
-case where character count and token count disagree in direction.
+## ADR-7 — Separate integrity, provenance, and task outcomes
 
-**Consequences.** Compression is slightly slower (counting is in the inner
-loop) and results are per-model, which is more honest and more useful. The
-tiered-counter design (ADR-5) keeps the inner loop offline-fast.
+The legacy `safe` flag reports structural status; explicit
+`structure_preserved` and `protected_spans_preserved` fields clarify its scope.
+No compression strategy is advertised as semantically lossless. Unmeasured
+profile ratios remain heuristics. `strategy="off"` performs measurement only,
+including no dedup side effects, so it provides an interpretable baseline.
 
----
+## ADR-8 — Retain telegraphic compression as an optional behavior to evaluate
 
-## ADR-4 — Legend-free abbreviations only
+`telegraphic` remains the default for compatibility. It combines conservative
+cleanup with guarded function-word deletion. The guards reduce known risks but
+do not establish that all grammar changes preserve meaning. Synthetic survival
+results and real-model comprehension are reported separately. Use `off` for an
+unchanged baseline and validate any transformation against downstream outcomes.
 
-**Context.** Abbreviation dictionaries (in the spirit of CompactPrompt) can
-save real tokens, but they have a receiver-side contract: if the receiving
-model doesn't understand an abbreviation, comprehension degrades silently;
-if a legend is injected to explain it, the legend costs tokens that must be
-amortized.
+## ADR-9 — Begin handoff diagnosis with explicit source clauses
 
-**Decision.** The default dictionary contains only substitutions any modern
-instruction-tuned model reads natively ("for example" → "e.g.",
-"in order to" → "to", filler removal). No legend is ever injected by default.
-Each substitution is token-checked per ADR-3.
+`HandoffContract` contains immutable evidence snapshots and caller-selected
+requirements whose quotes must appear in the cited evidence. Audits record exact
+presence at observed boundaries; repairs append whole source clauses and
+citations within an optional token cap. This creates inspectable provenance
+without claiming automatic importance ranking, semantic entailment, conflict
+resolution, or proof that a receiver complied.
 
-**Consequences.** The abbreviation stage saves modestly but never risks
-comprehension. Users with high-volume domain-specific traffic can supply
-custom dictionaries and legends — the amortization math is theirs to justify,
-and the docs say so.
+## ADR-10 — Bound replay and qualify every conclusion
 
----
+`diagnose_handoff` invokes a caller-owned downstream validator. A source-complete
+original must pass before a candidate failure is investigated. The evaluation
+budget covers baseline, candidate, repair, and reduction calls. Exceptions stop
+the search and remain visible in the report.
 
-## ADR-5 — Tiered token counting (`exact` / `api` / `estimate`)
-
-**Context.** OpenAI models have an exact local tokenizer (tiktoken). Current
-Anthropic models do not: the exact count comes from a network endpoint that
-requires a key. A profiler that silently mixes exact and approximate numbers
-— or that cannot run offline — is broken for its main use case.
-
-**Decision.** Three explicitly labeled tiers: `exact` (local tokenizer),
-`api` (provider endpoint, opt-in via `allow_api_counting`), `estimate`
-(calibrated offline heuristic). The tier travels with every stat, reports
-disclose when estimates are present, and nothing in the default path performs
-network I/O.
-
-**Consequences.** A bare `pip install laconic` works with zero optional
-dependencies, honestly labeled. Claude-side numbers are estimates unless the
-user opts into API counting; the estimator's error is itself measured against
-exact counters in the test suite (±25% bound on realistic prose).
-
----
-
-## ADR-6 — Dedup must respect the model boundary and the provider cache
-
-**Context.** Two subtleties naive dedup designs miss. First, tokens are only
-spent when text enters a model's context — a handle that is rehydrated before
-the receiving model reads it saves nothing. Second, providers price cached
-input tokens at ~10× less than fresh ones, and caching is prefix-based;
-rewriting message history invalidates the cache and can make "compression" a
-net cost increase.
-
-**Decision.** Dedup has two modes with explicit payoff conditions:
-*context mode* (default) replaces a block only when the same recipient already
-received it earlier in the session — the model resolves the reference by
-looking back at its own context; *store mode* (opt-in) replaces blocks with
-handles and equips the receiving agent with a rehydration tool. In both
-modes, only the newly outgoing message is transformed — history is never
-rewritten (prefix stability).
-
-**Consequences.** Context-mode savings appear from the second repetition
-onward, which is exactly where agent loops waste the most. The
-dedup-vs-provider-caching decision table lives in `limitations.md`. The
-`only_new` parameter on integration hooks exists to enforce prefix stability
-at the seam.
-
----
-
-## ADR-7 — Reliability over aggression, honesty over headline numbers
-
-**Context.** A strategy that saves 30% and never breaks a workflow is worth
-more than one that saves 70% and corrupts a tool call once a week — the cost
-of one silent corruption in production dwarfs the token savings. Meanwhile,
-the compression literature is full of order-of-magnitude claims that don't
-survive contact with structured traffic.
-
-**Decision.** The default strategy never drops content: sentence-level
-pruning is opt-in, bounded by per-model safe operating points that ship
-*unmeasured* (`None`) until the eval harness actually measures them — the
-default budget in the absence of measurement is a gentle 0.75. The docs state
-the realistic ceiling (1.3–3× on chatty payloads) up front. No benchmark
-number in this repository is invented; the README results table stays a
-template until a real run fills it. (The default was originally
-`conservative`; ADR-8 records the move to `telegraphic`, which preserves the
-never-drop-content property.)
-
-**Consequences.** First-run savings look modest compared to marketing-driven
-tools. Every number a user sees is one they can reproduce. The eval exists to
-*extend* the safe frontier with evidence, not vibes.
-
----
-
-## ADR-8 — Telegraphic is the default strategy
-
-**Context.** Users consistently ask for "a more efficient language for the
-AIs to talk in." Genuinely new codes are unavailable (ADR-1) and usually
-tokenize worse (ADR-3); the practical headroom inside the training
-distribution is telegram-style English — dropping articles, intensifiers,
-politeness, and meaning-safe copulas while keeping every content word,
-number, name, and negation. On the seed-7 offline benchmark this scores
-information survival 1.000 at whole-message token ratio 0.886, versus 0.936
-for `conservative`, and it composes with (rather than replaces) the
-conservative cleanup.
-
-**Decision.** `telegraphic` is the default `Session` strategy. Its guards are
-part of the contract: negations and their following word are never dropped,
-capitalized words and numbers survive, protected segments are untouched, and
-the pipeline's verify-and-fallback still applies. `conservative` remains
-available for users who want zero grammatical alteration.
-
-**Consequences.** Default handoffs read like terse notes rather than full
-prose. Information survival is measured at 1.000 offline, but *model
-comprehension* of telegraphic prose is per-model and unverified until a real
-eval run — the harness includes `laconic-telegraphic` as a matrix cell
-precisely so that number can be produced. Users whose downstream agents do
-grammatical inference on handoffs (rare, but possible) should switch back to
-`conservative`.
+A passing source-backed repair can be reduced by one greedy deletion pass.
+`reduction_complete` describes that pass, not global minimality. Results preserve
+attempts, source fingerprints, supplied metrics, and reproducibility notes.
+Task state isolation belongs to the caller. These checks support a scoped
+replay observation; stronger causal or model-performance claims require a
+separate controlled experiment.
